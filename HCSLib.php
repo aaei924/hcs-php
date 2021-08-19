@@ -1,12 +1,12 @@
 <?php
+require '/var/www/html/covid/vendor/autoload.php';
 require 'db.php';
 require 'Transkey.php';
+use phpseclib3\Crypt\RSA;
+use phpseclib3\Crypt\PublicKeyLoader;
 use Raon;
 class HCS
 {
-    public static $URL = [
-        'ENCRYPT' => 'https://cov.prws.kr/api/encrypt.php'
-    ];
     
     public static $REGIONS = [
             'goe' => '경기',
@@ -56,6 +56,15 @@ class HCS
             curl_close($ch);
          
             return json_decode($response, true);
+    }
+    
+    public static function rsaEncrypt($text)
+    {
+        $key = PublicKeyLoader::load('-----BEGIN RSA PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXemouJWXOlZO3jqDsHYM1qfEjVvCOmeoMNFXYSXdNhflU7mjWP8jWUmkYIQ8o3FGqMzsMTNxr+bAp0cULWu9eYmycjJwWIxxB7vUwvpEUNicgW7v5nCwmF5HS33Hmn7yDzcfjfBs99K5xJEppHG0qc+q3YXxxPpwZNIRFn0Wtxt0Muh1U8avvWyw03uQ/wMBnzhwUC8T4G5NclLEWzOQExbQ4oDlZBv8BM/WxxuOyu0I8bDUDdutJOfREYRZBlazFHvRKNNQQD2qDfjRz484uFs7b5nykjaMB9k/EJAuHjJzGs9MMMWtQIDAQAB
+-----END RSA PUBLIC KEY-----');
+        $key = $key->withPadding(RSA::ENCRYPTION_PKCS1);
+        return base64_encode($key->encrypt($text));
     }
     
     public static function registerUser($orgCode, $name, $region, $birthday, $password, $loginType,$checksum)
