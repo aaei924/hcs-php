@@ -1,17 +1,13 @@
 <?php
 require 'db.php';
-require 'Transkey.php';
+//require 'Transkey.php';
 require '/home/pi/phs/vendor/autoload.php';
-use Raon;
+//use Raon;
 use phpseclib3\Crypt\RSA;
 use phpseclib3\Crypt\PublicKeyLoader;
 
 class HCS
 {
-    public static $URL = [
-        'ENCRYPT' => 'https://cov.prws.kr/api/encrypt.php'
-    ];
-    
     public static $REGIONS = [
             'goe' => '경기',
             'sen' => '서울',
@@ -59,16 +55,20 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
     {
         $ch = curl_init();
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_URL, 'https://'.$url);
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); //header값 셋팅(없을시 삭제해도 무방함)
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data,JSON_UNESCAPED_UNICODE)); //POST방식으로 넘길 데이터(JSON데이터)
             curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+            curl_setopt($ch, CURLOPT_HEADER, 1);
             $response = curl_exec($ch);
+            $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            $headers = substr($response, 0, $header_size);
+            $body = substr($response, $header_size);
             curl_close($ch);
          
-            return json_decode($response, true);
+            return [json_decode($body, true), $headers];
     }
     
     public static function registerUser($orgCode, $name, $region, $birthday, $password, $loginType,$checksum)
@@ -88,7 +88,7 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
         $a->execute([$name,$orgCode,$region,$birthday,$password,$loginType,$checksum]);
     }
     
-    public static function findUser($orgCode, $name, $birthday, $loginType, $url)
+    public static function findUser($orgCode, $name, $birthday, $loginType, $region)
     {
         $headers = [
             'Content-Type: application/json',
@@ -99,15 +99,15 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
         
         $data = [
             'orgCode' => $orgCode,
-            'name' => $name,
-            'birthday' => $birthday,
+            'name' => self::RSAEncrypt($name),
+            'birthday' => self::RSAEncrypt($birthday),
             'loginType' => $loginType,
             'stdntPNo' => null
         ];
-        return self::requestPOST($url, $headers, $data);
+        return self::requestPOST($region.'hcs.eduro.go.kr/v2/findUser', $headers, $data);
     }
     
-    public static function hasPassword($token, $url)
+    public static function hasPassword($token, $region)
     {
         $headers = [
             'Content-Type: application/json',
@@ -119,10 +119,10 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
         
         $data = [];
         
-        return self::requestPOST($url, $headers, $data);
+        return self::requestPOST($region.'hcs.eduro.go.kr/v2/hasPassword', $headers, $data);
     }
     
-    public static function validatePassword($token, $password, $url)
+    public static function validatePassword($token, $password, $region)
     {
         $headers = [
             'Content-Type: application/json;charset=utf-8',
@@ -133,11 +133,11 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
             'Referer: https://hcs.eduro.go.kr/'
         ];
 
-        //$raon = Transkey::inputFillEncData($HTML);
+        /*$raon = Transkey::inputFillEncData($HTML);
         $mtk = new TransKey("https://hcs.eduro.go.kr/transkeyServlet");
         $pw_pad = $mtk->new_keypad('number', 'password', 'password', 'password');
         $encrypted = $pw_pad->encrypt_password($password);
-        $hm = $mtk->hmac_digest($encrypted);
+        $hm = $mtk->hmac_digest($encrypted);*/
         $f = fopen('/home/pi/phs/hcs/call_raon.js', 'w');
             fwrite($f, 
             "const p = '".$password."'
@@ -152,10 +152,10 @@ raon(p).then(r => console.log(r));");
             'makeSession' => true
         ];
         
-        return self::requestPOST($url, $headers, $data);
+        return self::requestPOST($region.'hcs.eduro.go.kr/v2/validatePassword', $headers, $data);
     }
     
-    public static function selectUserGroup($token, $url)
+    public static function selectUserGroup($token, $region)
     {
         $headers = [
             'Content-Type: application/json',
@@ -167,10 +167,10 @@ raon(p).then(r => console.log(r));");
         
         $data = [];
         
-        return self::requestPOST($url, $headers, $data);
+        return self::requestPOST($region.'hcs.eduro.go.kr/v2/selectUserGroup', $headers, $data);
     }
     
-    public static function getUserInfo($token, $orgCode, $userPNo, $url)
+    public static function getUserInfo($token, $orgCode, $userPNo, $region)
     {
         $headers = [
             'Content-Type: application/json',
@@ -185,10 +185,10 @@ raon(p).then(r => console.log(r));");
             'userPNo' => $userPNo
         ];
         
-        return self::requestPOST($url, $headers, $data);
+        return self::requestPOST($region.'hcs.eduro.go.kr/v2/getUserInfo', $headers, $data);
     }
     
-    public static function registerServey($token, $username, $url)
+    public static function registerServey($token, $username, $region, $cookie)
     {
         $headers = [
             'Content-Type: application/json',
@@ -197,7 +197,8 @@ raon(p).then(r => console.log(r));");
             'Origin: https://hcs.eduro.go.kr',
             'Referer: https://hcs.eduro.go.kr/',
             'Sec-Fetch-Mode: cors',
-            'Sec-Fetch-Site: same-site'
+            'Sec-Fetch-Site: same-site',
+            'Cookie: '.$cookie
         ];
         
         $data = [
@@ -222,7 +223,7 @@ raon(p).then(r => console.log(r));");
             'deviceUuid' => ''
         ];
         
-        return self::requestPOST($url, $headers, $data);
+        return self::requestPOST($region.'hcs.eduro.go.kr/registerServey', $headers, $data);
     }
     
     public static function searchSchool($loginType, $orgName, $url)
@@ -238,7 +239,7 @@ raon(p).then(r => console.log(r));");
         $data = [
             'orgCode' => $orgCode,
             'userPNo' => $userPNo
-        ];
+        ]; 
         
         return self::requestPOST($url, $headers, $data);
     }
