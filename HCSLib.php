@@ -1,14 +1,41 @@
 <?php
-require 'db.php';
-//require 'Transkey.php';
-require '/home/pi/phs/vendor/autoload.php';
-//use Raon;
+require 'vendor/autoload.php';
 use phpseclib3\Crypt\RSA;
 use phpseclib3\Crypt\PublicKeyLoader;
 
 class HCS
 {
-    public static $REGIONS = [
+    /**
+    * 등교가 불가능하면(1, 3번 '예' 또는 2번 '양성) N, 아니면 Y
+    */
+    private static $rspns00 = 'Y';
+    
+    /**
+    * 1. 학생 본인이 코로나19 감염에 의심되는 아래의 임상증상이 있나요?: "1"=아니오, "2"=예
+    */
+    private static $rspns01 = '1';
+    
+    /**
+    * 3. 학생 본인 또는 동거인이 PCR 검사를 받고 그 결과를 기다리고 있나요?: "1"=아니오, "0"=예
+    */
+    private static $rspns02 = '1';
+    
+    /**
+    * 2. 학생은 오늘 신속항원검사(자가진단)를 실시했나요?: "1"=실시하지 않음, null=실시함
+    */
+    private static $rspns03 = '1';
+    
+    /**
+    * 2. 학생은 오늘 신속항원검사(자가진단)를 실시했나요?: null=실시하지 않음, "0"=음성, "1"=양성
+    */
+    private static $rspns07 = null;
+    
+    /**
+    * 내용없는 문항
+    */
+    private static $rspns04, $rspns05, $rspns06, $rspns08, $rspns09, $rspns10, $rspns11, $rspns12, $rspns13, $rspns14, $rspns15 = null;
+
+    private static $REGIONS = [
             'goe' => '경기',
             'sen' => '서울',
             'pen' => '부산',
@@ -28,7 +55,12 @@ class HCS
             'jje' => '제주'
     ];
     
-    public static function RSAEncrypt($text)
+    /**
+    * RSA Encryption (RSA/ECB/PKCS1Padding)
+    * @param string $text text to encrypt
+    * @return string encrypted text
+    */
+    private static function RSAEncrypt(string $text) : string
     {
         $key = PublicKeyLoader::load('-----BEGIN RSA PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXemouJWXOlZO3jqDsHYM1qfEjVvCOmeoMNFXYSXdNhflU7mjWP8jWUmkYIQ8o3FGqMzsMTNxr+bAp0cULWu9eYmycjJwWIxxB7vUwvpEUNicgW7v5nCwmF5HS33Hmn7yDzcfjfBs99K5xJEppHG0qc+q3YXxxPpwZNIRFn0Wtxt0Muh1U8avvWyw03uQ/wMBnzhwUC8T4G5NclLEWzOQExbQ4oDlZBv8BM/WxxuOyu0I8bDUDdutJOfREYRZBlazFHvRKNNQQD2qDfjRz484uFs7b5nykjaMB9k/EJAuHjJzGs9MMMWtQIDAQAB
@@ -37,7 +69,13 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
         return base64_encode($key->encrypt($text));
     }
     
-    public static function requestGET($url, $headers =array())
+    /**
+    * send GET request with curl
+    * @param string $url request URL
+    * @param array $headers HTTP headers
+    * @return array|null returns null when error
+    */
+    private static function requestGET($url, $headers =[], $decode=1) : array|null
         { // cURL GET
             $ch = curl_init();                                 //curl 초기화
             curl_setopt($ch, CURLOPT_URL, $url);               //URL 지정하기
@@ -48,10 +86,17 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
             $response = curl_exec($ch);
             curl_close($ch);
          
-            return json_decode($response, true);
+            return ($decode===1)?json_decode($response, true):$response;
         }
     
-    public static function requestPOST($url, $headers, array $data)
+    /**
+    * send POST request with curl
+    * @param string $url request URL
+    * @param array $headers HTTP headers
+    * @param array $data form data to submit
+    * @return array|null returns null when error
+    */
+    private static function requestPOST($url, $headers, array $data) : array|null
     {
         $ch = curl_init();
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -67,8 +112,25 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
             $headers = substr($response, 0, $header_size);
             $body = substr($response, $header_size);
             curl_close($ch);
-         
+            
             return [json_decode($body, true), $headers];
+    }
+    
+    public function __construct($orgCode, $name, $birthday, $loginType, $region, $password)
+    {
+        $this->headers = [
+            'Content-Type: application/json',
+            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
+            'Origin: https://hcs.eduro.go.kr',
+            'Referer: https://hcs.eduro.go.kr/'
+        ];
+        
+        $this->orgCode = $orgCode;
+        $this->name = $name;
+        $this->birthday = $birthday;
+        $this->loginType = $loginType;
+        $this->region = $region;
+        $this->password = $password;
     }
     
     public static function registerUser($orgCode, $name, $region, $birthday, $password, $loginType,$checksum)
@@ -88,51 +150,39 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
         $a->execute([$name,$orgCode,$region,$birthday,$password,$loginType,$checksum]);
     }
     
-    public static function findUser($orgCode, $name, $birthday, $loginType, $region)
+    /**
+    * find user data
+    */
+    public function findUser() : void
     {
-        $headers = [
-            'Content-Type: application/json',
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/'
-        ];
-        
         $data = [
-            'orgCode' => $orgCode,
-            'name' => self::RSAEncrypt($name),
-            'birthday' => self::RSAEncrypt($birthday),
-            'loginType' => $loginType,
+            'orgCode' => $this->orgCode,
+            'name' => self::RSAEncrypt($this->name),
+            'birthday' => self::RSAEncrypt($this->birthday),
+            'loginType' => $this->loginType,
             'stdntPNo' => null
         ];
-        return self::requestPOST($region.'hcs.eduro.go.kr/v2/findUser', $headers, $data);
+        $res = self::requestPOST($this->region.'hcs.eduro.go.kr/v2/findUser', $this->headers, $data)[0];
+        $this->token = $res['token'];
+        $this->stdntYn = $res['stdntYn'];
     }
     
-    public static function hasPassword($token, $region)
+    /**
+    * check if this user has password
+    */
+    public function hasPassword() : void
     {
-        $headers = [
-            'Content-Type: application/json',
-            'Authorization: '.$token,
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/'
-        ];
-        
+        $this->headers[4] = 'Authorization: '.$this->token;
         $data = [];
         
-        return self::requestPOST($region.'hcs.eduro.go.kr/v2/hasPassword', $headers, $data);
+        $this->hasPassword = self::requestPOST($this->region.'hcs.eduro.go.kr/v2/hasPassword', $this->headers, $data)[0];
     }
     
-    public static function validatePassword($token, $password, $region)
+    /**
+    * check user password validity and change token
+    */
+    public function validatePassword() : void
     {
-        $headers = [
-            'Content-Type: application/json;charset=utf-8',
-            'Authorization: '.$token,
-            'X-Requested-With: XMLHttpRequest',
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/'
-        ];
-
         /*$raon = Transkey::inputFillEncData($HTML);
         $mtk = new TransKey("https://hcs.eduro.go.kr/transkeyServlet");
         $pw_pad = $mtk->new_keypad('number', 'password', 'password', 'password');
@@ -140,7 +190,7 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
         $hm = $mtk->hmac_digest($encrypted);*/
         $f = fopen('/home/pi/phs/hcs/call_raon.js', 'w');
             fwrite($f, 
-            "const p = '".$password."'
+            "const p = '".$this->password."'
 const raon = require('./enc/raon')
 raon(p).then(r => console.log(r));");
             fclose($f);
@@ -152,81 +202,95 @@ raon(p).then(r => console.log(r));");
             'makeSession' => true
         ];
         
-        return self::requestPOST($region.'hcs.eduro.go.kr/v2/validatePassword', $headers, $data);
+        $res = self::requestPOST($this->region.'hcs.eduro.go.kr/v2/validatePassword', $this->headers, $data);
+        
+        $this->token = $res[0]['token'];
+        $this->pInfAgrmYn = $res[0]['pInfAgrmYn'];
+        $this->WAF = substr($res[1], strpos($res[1], 'WAF='), 37);
+        $this->_JSESSIONID = substr($res[1], strpos($res[1], '_JSESSIONID='), 121);
+        
+        if($res[0]['isError'])
+            throw new ErrorException($res[0]->statusCode.'/'.$res[0]->errorCode);
     }
     
-    public static function selectUserGroup($token, $region)
+    /**
+    * get registered users list and change token
+    */
+    public function selectUserGroup() : void
     {
-        $headers = [
-            'Content-Type: application/json',
-            'Authorization: '.$token,
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/'
-        ];
+        $this->headers[4] = 'Authorization: '.$this->token;
+        $this->headers[5] = 'Cookie: '.$this->WAF.$this->_JSESSIONID;
         
         $data = [];
         
-        return self::requestPOST($region.'hcs.eduro.go.kr/v2/selectUserGroup', $headers, $data);
+        $res = self::requestPOST($this->region.'hcs.eduro.go.kr/v2/selectUserGroup', $this->headers, $data)[0];
+        
+        $this->token = $res[0]['token'];
+        $this->userPNo = $res[0]['userPNo'];
+        
+        $this->headers[4] = 'Authorization: '.$this->token;
     }
     
-    public static function getUserInfo($token, $orgCode, $userPNo, $region)
+    /**
+    * get user details
+    */
+    public function getUserInfo() : void
     {
-        $headers = [
-            'Content-Type: application/json',
-            'Authorization: '.$token,
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/'
-        ];
-        
         $data = [
-            'orgCode' => $orgCode,
-            'userPNo' => $userPNo
+            'orgCode' => $this->orgCode,
+            'userPNo' => $this->userPNo
         ];
         
-        return self::requestPOST($region.'hcs.eduro.go.kr/v2/getUserInfo', $headers, $data);
+        $res = self::requestPOST($this->region.'hcs.eduro.go.kr/v2/getUserInfo', $this->headers, $data);
     }
     
-    public static function registerServey($token, $username, $region, $cookie)
+    /**
+    * get hcs client version
+    * @return string hcs client version
+    */
+    private static function getClientVersion() : string
     {
-        $headers = [
-            'Content-Type: application/json',
-            'Authorization: '.$token,
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/',
-            'Sec-Fetch-Mode: cors',
-            'Sec-Fetch-Site: same-site',
-            'Cookie: '.$cookie
-        ];
+        require_once __DIR__.'/simple_html_dom.php';
+        $g = \file_get_html('https://hcs.eduro.go.kr/');
+        $href = $g->find('link[rel=icon]')[0]->href;
         
-        $data = [
-            'rspns00' => 'Y',
-            'rspns01' => '1',
-            'rspns02' => '1',
-            'rspns03' => null,
-            'rspns04' => null,
-            'rspns05' => null,
-            'rspns06' => null,
-            'rspns07' => null,
-            'rspns08' => '0',
-            'rspns09' => '0',
-            'rspns10' => null,
-            'rspns11' => null,
-            'rspns12' => null,
-            'rspns13' => null,
-            'rspns14' => null,
-            'rspns15' => null,
-            'upperToken' => $token,
-            'upperUserNameEncpt' => $username,
-            'deviceUuid' => ''
-        ];
-        
-        return self::requestPOST($region.'hcs.eduro.go.kr/registerServey', $headers, $data);
+        preg_match('#eduro/(.*)/favicon#', $href, $match);
+        return $match[1];
     }
     
-    public static function searchSchool($loginType, $orgName, $url)
+    /**
+    * submit health check survey content
+    * @return array|null returns null when error
+    */
+    public function registerServey() : array|null
+    {
+        $data = [
+            'rspns00' => self::$rspns00,
+            'rspns01' => self::$rspns01,
+            'rspns02' => self::$rspns02,
+            'rspns03' => self::$rspns03,
+            'rspns04' => self::$rspns04,
+            'rspns05' => self::$rspns05,
+            'rspns06' => self::$rspns06,
+            'rspns07' => self::$rspns07,
+            'rspns08' => self::$rspns08,
+            'rspns09' => self::$rspns09,
+            'rspns10' => self::$rspns10,
+            'rspns11' => self::$rspns11,
+            'rspns12' => self::$rspns12,
+            'rspns13' => self::$rspns13,
+            'rspns14' => self::$rspns14,
+            'rspns15' => self::$rspns15,
+            'upperToken' => $this->token,
+            'upperUserNameEncpt' => $this->name,
+            'deviceUuid' => '',
+            'clientVersion' => self::getClientVersion()
+        ];
+        
+        return self::requestPOST($this->region.'hcs.eduro.go.kr/registerServey', $this->headers, $data);
+    }
+    
+    public function searchSchool()
     {
         $headers = [
             'Content-Type: application/json',
@@ -244,60 +308,28 @@ raon(p).then(r => console.log(r));");
         return self::requestPOST($url, $headers, $data);
     }
     
-    public static function joinClassList($token, $url)
+    public function joinClassList()
     {
-        $headers = [
-            'Content-Type: application/json',
-            'Authorization: '.$token,
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/'
-        ];
         
         $data = [];
         
-        return self::requestPOST($url, $headers, $data);
+        return self::requestPOST($this->region.'hcs.eduro.go.kr/joinClassList', $this->headers, $data);
     }
     
-    public static function join($token, $orgCode, $grade, $classNm, $classCode, $url)
+    public function join($token, $orgCode, $grade, $classNm, $classCode, $url)
     {
-        $headers = [
-            'Content-Type: application/json',
-            'Authorization: '.$token,
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/'
-        ];
-        
         $data = [
-            'orgCode' => $orgCode,
-            'grade' => $grade,
-            'classNm' => $classNm,
-            'classCode' => $classCode,
-            'userPNo' => $userPNo
+            'orgCode' => $this->orgCode,
+            'grade' => $this->grade,
+            'classNm' => $this->classNm,
+            'classCode' => $this->classCode
         ];
         
-        return self::requestPOST($url, $headers, $data);
+        return self::requestPOST($this->region.'hcs.eduro.go.kr/join', $this->headers, $data);
     }
     
-    public static function joinDetail($token, $orgCode, $userPNo, $url)
+    public function joinDetail($data)
     {
-        $headers = [
-            'Content-Type: application/json',
-            'Authorization: '.$token,
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/'
-        ];
-        
-        $data = [
-            'orgCode' => $orgCode,
-            'grade' => $grade,
-            'classCode' => $classCode,
-            'name' => $name,
-            'userPNo' => $userPNo
-        ];
-        
-        return self::requestPOST($url, $headers, $data);
+        return self::requestPOST($this->region.'hcs.eduro.go.kr/joinDetail', $this->headers, $data);
     }
 }
