@@ -1,5 +1,4 @@
 <?php
-require 'vendor/autoload.php';
 use phpseclib3\Crypt\RSA;
 use phpseclib3\Crypt\PublicKeyLoader;
 
@@ -8,34 +7,34 @@ class HCS
     /**
     * 등교가 불가능하면(1, 3번 '예' 또는 2번 '양성) N, 아니면 Y
     */
-    private static $rspns00 = 'Y';
+    private static string $rspns00 = 'Y';
     
     /**
     * 1. 학생 본인이 코로나19 감염에 의심되는 아래의 임상증상이 있나요?: "1"=아니오, "2"=예
     */
-    private static $rspns01 = '1';
+    private static string $rspns01 = '1';
     
     /**
     * 3. 학생 본인 또는 동거인이 PCR 검사를 받고 그 결과를 기다리고 있나요?: "1"=아니오, "0"=예
     */
-    private static $rspns02 = '1';
+    private static string $rspns02 = '1';
     
     /**
     * 2. 학생은 오늘 신속항원검사(자가진단)를 실시했나요?: "1"=실시하지 않음, null=실시함
     */
-    private static $rspns03 = '1';
+    private static string|null $rspns03 = '1';
     
     /**
     * 2. 학생은 오늘 신속항원검사(자가진단)를 실시했나요?: null=실시하지 않음, "0"=음성, "1"=양성
     */
-    private static $rspns07 = null;
+    private static string|null $rspns07 = null;
     
     /**
     * 내용없는 문항
     */
     private static $rspns04, $rspns05, $rspns06, $rspns08, $rspns09, $rspns10, $rspns11, $rspns12, $rspns13, $rspns14, $rspns15 = null;
 
-    private static $REGIONS = [
+    private static array $REGIONS = [
             'goe' => '경기',
             'sen' => '서울',
             'pen' => '부산',
@@ -55,12 +54,29 @@ class HCS
             'jje' => '제주'
     ];
     
+    public function __construct($orgName, $name, $birthday, $loginType, $region, $password)
+    {
+        $this->headers = [
+            'Content-Type: application/json',
+            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
+            'Origin: https://hcs.eduro.go.kr',
+            'Referer: https://hcs.eduro.go.kr/'
+        ];
+        
+        $this->orgName = $orgName;
+        $this->name = $name;
+        $this->birthday = $birthday;
+        $this->loginType = $loginType;
+        $this->region = $region;
+        $this->password = $password;
+    }
+    
     /**
     * RSA Encryption (RSA/ECB/PKCS1Padding)
     * @param string $text text to encrypt
     * @return string encrypted text
     */
-    private static function RSAEncrypt(string $text) : string
+    private static function RSAEncrypt(string $text): string
     {
         $key = PublicKeyLoader::load('-----BEGIN RSA PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXemouJWXOlZO3jqDsHYM1qfEjVvCOmeoMNFXYSXdNhflU7mjWP8jWUmkYIQ8o3FGqMzsMTNxr+bAp0cULWu9eYmycjJwWIxxB7vUwvpEUNicgW7v5nCwmF5HS33Hmn7yDzcfjfBs99K5xJEppHG0qc+q3YXxxPpwZNIRFn0Wtxt0Muh1U8avvWyw03uQ/wMBnzhwUC8T4G5NclLEWzOQExbQ4oDlZBv8BM/WxxuOyu0I8bDUDdutJOfREYRZBlazFHvRKNNQQD2qDfjRz484uFs7b5nykjaMB9k/EJAuHjJzGs9MMMWtQIDAQAB
@@ -75,19 +91,19 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
     * @param array $headers HTTP headers
     * @return array|null returns null when error
     */
-    private static function requestGET($url, $headers =[], $decode=1) : array|null
-        { // cURL GET
-            $ch = curl_init();                                 //curl 초기화
-            curl_setopt($ch, CURLOPT_URL, $url);               //URL 지정하기
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);    //요청 결과를 문자열로 반환
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); //header값 셋팅(없을시 삭제해도 무방함)
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);      //connection timeout 10초
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);   //원격 서버의 인증서가 유효한지 검사 안함
-            $response = curl_exec($ch);
-            curl_close($ch);
-         
-            return ($decode===1)?json_decode($response, true):$response;
-        }
+    private static function requestGET($url, $headers =[], $decode=1): array|string|null
+    { // cURL GET
+        $ch = curl_init();                                 //curl 초기화
+        curl_setopt($ch, CURLOPT_URL, $url);               //URL 지정하기
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);    //요청 결과를 문자열로 반환
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); //header값 셋팅(없을시 삭제해도 무방함)
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);      //connection timeout 10초
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);   //원격 서버의 인증서가 유효한지 검사 안함
+        $response = curl_exec($ch);
+        curl_close($ch);
+        
+        return ($decode===1)?json_decode($response, true):$response;
+    }
     
     /**
     * send POST request with curl
@@ -96,41 +112,24 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
     * @param array $data form data to submit
     * @return array|null returns null when error
     */
-    private static function requestPOST($url, $headers, array $data) : array|null
+    private static function requestPOST($url, $headers, array $data): array|null
     {
         $ch = curl_init();
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_URL, 'https://'.$url);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); //header값 셋팅(없을시 삭제해도 무방함)
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data,JSON_UNESCAPED_UNICODE)); //POST방식으로 넘길 데이터(JSON데이터)
-            curl_setopt($ch, CURLOPT_TIMEOUT, 3);
-            curl_setopt($ch, CURLOPT_HEADER, 1);
-            $response = curl_exec($ch);
-            $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-            $headers = substr($response, 0, $header_size);
-            $body = substr($response, $header_size);
-            curl_close($ch);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_URL, 'https://'.$url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); //header값 셋팅(없을시 삭제해도 무방함)
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data,JSON_UNESCAPED_UNICODE)); //POST방식으로 넘길 데이터(JSON데이터)
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+        curl_setopt($ch, CURLOPT_HEADER, 1);
+        $response = curl_exec($ch);
+        $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        $headers = substr($response, 0, $header_size);
+        $body = substr($response, $header_size);
+        curl_close($ch);
             
             return [json_decode($body, true), $headers];
-    }
-    
-    public function __construct($orgCode, $name, $birthday, $loginType, $region, $password)
-    {
-        $this->headers = [
-            'Content-Type: application/json',
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/'
-        ];
-        
-        $this->orgCode = $orgCode;
-        $this->name = $name;
-        $this->birthday = $birthday;
-        $this->loginType = $loginType;
-        $this->region = $region;
-        $this->password = $password;
     }
     
     public static function registerUser($orgCode, $name, $region, $birthday, $password, $loginType,$checksum)
@@ -149,81 +148,98 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
         $a = $db->prepare("INSERT INTO `selfcheck`(name,orgCode,region,birthday,password,loginType,checksum) VALUES (?,?,?,?,?,?,?)");
         $a->execute([$name,$orgCode,$region,$birthday,$password,$loginType,$checksum]);
     }
-    
+
     /**
-    * find user data
-    */
-    public function findUser() : void
+     * hcs 1.9.5 update:
+     * get search key
+     * -----------------
+     * hcs 1.9.10 update:
+     * get crypted orgCode
+     */
+    public function getSchoolInfo(): void
     {
+        $get = self::requestGET('https://hcs.eduro.go.kr/v2/searchSchool?orgName='.urlencode($this->orgName));
+        
+        foreach($get['schulList'] as $sc){
+            if($sc['kraOrgNm'] == $this->orgName && $sc['lctnScNm'] == $this->region){
+                $this->orgCode = $sc['orgCode'];
+                $this->lctnScCode = $sc['lctnScCode'];
+                $this->juOrgCode = $sc['juOrgCode'];
+                $this->baseUrl = $sc['atptOfcdcConctUrl'];
+                $this->searchKey = $get['key'];
+            }else
+                continue;
+        }
+        
+        if(!isset($this->orgCode))
+            die('school not found');
+    }
+
+    /**
+     * find user data
+     * -----------------
+     * hcs 1.9.10 update:
+     * change endpoint to /v3/
+    */
+    public function findUser(): void
+    {
+        require __DIR__.'/TransKey.php';
+        $raon = new Transkey($this->password);
+        
+        $f = fopen('call_raon.js', 'w');
+
+        fwrite($f, 
+"const p = ".json_encode($raon->sessionKey)."
+const q = '".$raon->initTime."'
+const s = ".json_encode($raon->keys)."
+const t = '".$this->password."'
+const u = '".$raon->genSessionKey."'
+const raon = require('./enc/getseed')
+raon(t,p,q,s,u).then(r => console.log(r));");
+        fclose($f);
+        exec("node call_raon.js", $output, $return_var);
+        
+        $raon->enc = $output[0];
+        $raon->finalize();
+
+        $this->getSchoolInfo();
+            
         $data = [
             'orgCode' => $this->orgCode,
             'name' => self::RSAEncrypt($this->name),
             'birthday' => self::RSAEncrypt($this->birthday),
             'loginType' => $this->loginType,
-            'stdntPNo' => null
-        ];
-        $res = self::requestPOST($this->region.'hcs.eduro.go.kr/v2/findUser', $this->headers, $data)[0];
-        $this->token = $res['token'];
-        $this->stdntYn = $res['stdntYn'];
-    }
-    
-    /**
-    * check if this user has password
-    */
-    public function hasPassword() : void
-    {
-        $this->headers[4] = 'Authorization: '.$this->token;
-        $data = [];
-        
-        $this->hasPassword = self::requestPOST($this->region.'hcs.eduro.go.kr/v2/hasPassword', $this->headers, $data)[0];
-    }
-    
-    /**
-    * check user password validity and change token
-    */
-    public function validatePassword() : void
-    {
-        /*$raon = Transkey::inputFillEncData($HTML);
-        $mtk = new TransKey("https://hcs.eduro.go.kr/transkeyServlet");
-        $pw_pad = $mtk->new_keypad('number', 'password', 'password', 'password');
-        $encrypted = $pw_pad->encrypt_password($password);
-        $hm = $mtk->hmac_digest($encrypted);*/
-        $f = fopen('/home/pi/phs/hcs/call_raon.js', 'w');
-            fwrite($f, 
-            "const p = '".$this->password."'
-const raon = require('./enc/raon')
-raon(p).then(r => console.log(r));");
-            fclose($f);
-            exec("node /home/pi/phs/hcs/call_raon.js", $output, $return_var);
-       // $password = new Raon($password);
-        $data = [
-            'password' => $output[0],
+            'stdntPNo' => null,
+            'password' => json_encode($raon->json()),
+            'lctnScCode' => $this->lctnScCode,
             'deviceUuid' => '',
-            'makeSession' => true
+            'makeSession' => true,
+            'searchKey' => $this->searchKey
         ];
-        
-        $res = self::requestPOST($this->region.'hcs.eduro.go.kr/v2/validatePassword', $this->headers, $data);
-        
+
+        $res = self::requestPOST($this->baseUrl.'/v3/findUser', $this->headers, $data);
+        $this->stdntYn = $res[0]['stdntYn'];
         $this->token = $res[0]['token'];
         $this->pInfAgrmYn = $res[0]['pInfAgrmYn'];
         $this->WAF = substr($res[1], strpos($res[1], 'WAF='), 37);
         $this->_JSESSIONID = substr($res[1], strpos($res[1], '_JSESSIONID='), 121);
         
-        if($res[0]['isError'])
-            throw new ErrorException($res[0]->statusCode.'/'.$res[0]->errorCode);
+        $this->debug = $res[0];
+        //if($res[0]['isError'])
+        //    throw new ErrorException($res[0]['statusCode'].'/'.$res[0]['errorCode'].':'.$res[0]['message']);
     }
     
     /**
-    * get registered users list and change token
+    * get registered user list and change token
     */
-    public function selectUserGroup() : void
+    public function selectUserGroup(): void
     {
         $this->headers[4] = 'Authorization: '.$this->token;
         $this->headers[5] = 'Cookie: '.$this->WAF.$this->_JSESSIONID;
         
         $data = [];
         
-        $res = self::requestPOST($this->region.'hcs.eduro.go.kr/v2/selectUserGroup', $this->headers, $data)[0];
+        $res = self::requestPOST($this->baseUrl.'/v2/selectUserGroup', $this->headers, $data)[0];
         
         $this->token = $res[0]['token'];
         $this->userPNo = $res[0]['userPNo'];
@@ -234,35 +250,38 @@ raon(p).then(r => console.log(r));");
     /**
     * get user details
     */
-    public function getUserInfo() : void
+    public function getUserInfo(): void
     {
         $data = [
-            'orgCode' => $this->orgCode,
+            'orgCode' => $this->juOrgCode,
             'userPNo' => $this->userPNo
         ];
         
-        $res = self::requestPOST($this->region.'hcs.eduro.go.kr/v2/getUserInfo', $this->headers, $data);
+        $res = self::requestPOST($this->baseUrl.'/v2/getUserInfo', $this->headers, $data);
     }
     
     /**
     * get hcs client version
     * @return string hcs client version
     */
-    private static function getClientVersion() : string
+    public static function getClientVersion(): string
     {
-        require_once __DIR__.'/simple_html_dom.php';
-        $g = \file_get_html('https://hcs.eduro.go.kr/');
-        $href = $g->find('link[rel=icon]')[0]->href;
-        
-        preg_match('#eduro/(.*)/favicon#', $href, $match);
-        return $match[1];
+        file_get_contents('https://hcs.eduro.go.kr/');
+        foreach($http_response_header as $header){
+            if(str_starts_with($header, 'X-Client-Version')){
+                $version = str_replace('X-Client-Version: ', '', $header);
+                return $version;
+            }
+        }
+
+        return 'Cannot find version';
     }
     
     /**
     * submit health check survey content
     * @return array|null returns null when error
     */
-    public function registerServey() : array|null
+    public function registerServey(): array|null
     {
         $data = [
             'rspns00' => self::$rspns00,
@@ -287,14 +306,15 @@ raon(p).then(r => console.log(r));");
             'clientVersion' => self::getClientVersion()
         ];
         
-        return self::requestPOST($this->region.'hcs.eduro.go.kr/registerServey', $this->headers, $data);
+        return self::requestPOST($this->baseUrl.'/registerServey', $this->headers, $data);
     }
     
+    /*
     public function searchSchool()
     {
         $headers = [
             'Content-Type: application/json',
-            'Authorization: '.$token,
+            'Authorization: '.$this->token,
             'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
             'Origin: https://hcs.eduro.go.kr',
             'Referer: https://hcs.eduro.go.kr/'
@@ -331,5 +351,5 @@ raon(p).then(r => console.log(r));");
     public function joinDetail($data)
     {
         return self::requestPOST($this->region.'hcs.eduro.go.kr/joinDetail', $this->headers, $data);
-    }
+    }*/
 }
