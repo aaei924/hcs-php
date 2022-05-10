@@ -8,7 +8,7 @@ enum HTTPRequestMethods: int
 /**
  * 교육부 건강상태 자가진단 라이브러리
  * MOE Health Check System library.
- * @author PRASEOD- (aaei924)
+ * @author Hyunseung Park (aaei924)
  * @version 1.9.11
  */
 class HCS
