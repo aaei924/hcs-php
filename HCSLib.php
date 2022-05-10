@@ -1,7 +1,16 @@
 <?php
-use phpseclib3\Crypt\RSA;
-use phpseclib3\Crypt\PublicKeyLoader;
+enum HTTPRequestMethods: int
+{
+    case GET = 0;
+    case POST = 1;
+}
 
+/**
+ * 교육부 건강상태 자가진단 라이브러리
+ * MOE Health Check System library.
+ * @author PRASEOD- (aaei924)
+ * @version 1.9.11
+ */
 class HCS
 {
     /**
@@ -15,17 +24,17 @@ class HCS
     private static string $rspns01 = '1';
     
     /**
-    * 3. 학생 본인 또는 동거인이 PCR 검사를 받고 그 결과를 기다리고 있나요?: "1"=아니오, "0"=예
+    * 3. 학생 본인이 PCR 등 검사를 받고 그 결과를 기다리고 있나요?: "1"=아니오, "0"=예
     */
     private static string $rspns02 = '1';
     
     /**
-    * 2. 학생은 오늘 신속항원검사(자가진단)를 실시했나요?: "1"=실시하지 않음, null=실시함
+    * 2. 학생은 오늘(어제 저녁 포함) 신속항원검사(자가진단)를 실시했나요?: "1"=실시하지 않음, null=실시함
     */
     private static string|null $rspns03 = '1';
     
     /**
-    * 2. 학생은 오늘 신속항원검사(자가진단)를 실시했나요?: null=실시하지 않음, "0"=음성, "1"=양성
+    * 2. 학생은 오늘(어제 저녁 포함) 신속항원검사(자가진단)를 실시했나요?: null=실시하지 않음, "0"=음성, "1"=양성
     */
     private static string|null $rspns07 = null;
     
@@ -34,119 +43,84 @@ class HCS
     */
     private static $rspns04, $rspns05, $rspns06, $rspns08, $rspns09, $rspns10, $rspns11, $rspns12, $rspns13, $rspns14, $rspns15 = null;
 
-    private static array $REGIONS = [
-            'goe' => '경기',
-            'sen' => '서울',
-            'pen' => '부산',
-            'sje' => '세종',
-            'gen' => '광주',
-            'ice' => '인천',
-            'dge' => '대구',
-            'dje' => '대전',
-            'use' => '울산',
-            'kwe' => '강원',
-            'cbe' => '충북',
-            'cne' => '충남',
-            'jbe' => '전북',
-            'jne' => '전남',
-            'gbe' => '경북',
-            'gne' => '경남',
-            'jje' => '제주'
+    private static array $headers = [
+        'Content-Type: application/json',
+        'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
+        'Origin: https://hcs.eduro.go.kr',
+        'Referer: https://hcs.eduro.go.kr/'
     ];
+
+    const GET = HTTPRequestMethods::GET;
+    const POST = HTTPRequestMethods::POST;
     
-    public function __construct($orgName, $name, $birthday, $loginType, $region, $password)
-    {
-        $this->headers = [
-            'Content-Type: application/json',
-            'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Mobile/13B143',
-            'Origin: https://hcs.eduro.go.kr',
-            'Referer: https://hcs.eduro.go.kr/'
-        ];
-        
-        $this->orgName = $orgName;
-        $this->name = $name;
-        $this->birthday = $birthday;
-        $this->loginType = $loginType;
-        $this->region = $region;
-        $this->password = $password;
-    }
+    /**
+     * @param string $orgName   Name of organization
+     * @param string $name      Name of user
+     * @param string $birthday  Birthday of user (in YYMMDD format)
+     * @param string $loginType Login type of user
+     * @param string $region    Region of user
+     * @param string $password  Login password of user
+     */
+    public function __construct(
+        public string $orgName,
+        public string $name,
+        public string $birthday, 
+        public string $loginType,
+        public string $region,
+        public string $password
+    ) {}
     
     /**
     * RSA Encryption (RSA/ECB/PKCS1Padding)
-    * @param string $text text to encrypt
-    * @return string encrypted text
+    * @param  string $text  text to encrypt
+    * @return string        encrypted text
     */
     private static function RSAEncrypt(string $text): string
     {
-        $key = PublicKeyLoader::load('-----BEGIN RSA PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXemouJWXOlZO3jqDsHYM1qfEjVvCOmeoMNFXYSXdNhflU7mjWP8jWUmkYIQ8o3FGqMzsMTNxr+bAp0cULWu9eYmycjJwWIxxB7vUwvpEUNicgW7v5nCwmF5HS33Hmn7yDzcfjfBs99K5xJEppHG0qc+q3YXxxPpwZNIRFn0Wtxt0Muh1U8avvWyw03uQ/wMBnzhwUC8T4G5NclLEWzOQExbQ4oDlZBv8BM/WxxuOyu0I8bDUDdutJOfREYRZBlazFHvRKNNQQD2qDfjRz484uFs7b5nykjaMB9k/EJAuHjJzGs9MMMWtQIDAQAB
------END RSA PUBLIC KEY-----');
-        $key = $key->withPadding(RSA::ENCRYPTION_PKCS1);
-        return base64_encode($key->encrypt($text));
+        $publicKey = 
+            "-----BEGIN PUBLIC KEY-----\n".
+            'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXemouJWXOlZO3jqDsHYM1qfEjVvCOmeoMNFXYSXdNhflU7mjWP8jWUmkYIQ8o3FGqMzsMTNxr+bAp0cULWu9eYmycjJwWIxxB7vUwvpEUNicgW7v5nCwmF5HS33Hmn7yDzcfjfBs99K5xJEppHG0qc+q3YXxxPpwZNIRFn0Wtxt0Muh1U8avvWyw03uQ/wMBnzhwUC8T4G5NclLEWzOQExbQ4oDlZBv8BM/WxxuOyu0I8bDUDdutJOfREYRZBlazFHvRKNNQQD2qDfjRz484uFs7b5nykjaMB9k/EJAuHjJzGs9MMMWtQIDAQAB'.
+            "\n-----END PUBLIC KEY-----";
+        openssl_public_encrypt($text, $encrypted, $publicKey, OPENSSL_PKCS1_PADDING);
+        return base64_encode($encrypted);
     }
-    
+
     /**
-    * send GET request with curl
-    * @param string $url request URL
-    * @param array $headers HTTP headers
-    * @return array|null returns null when error
+    * send HTTP request with curl
+    * @param HTTPRequestMethods $method request method
+    * @param string $url     request URL
+    * @param array  $headers HTTP headers
+    * @param array  $data    form data to submit
+    * @return array|null     returns null when error
     */
-    private static function requestGET($url, $headers =[], $decode=1): array|string|null
-    { // cURL GET
-        $ch = curl_init();                                 //curl 초기화
-        curl_setopt($ch, CURLOPT_URL, $url);               //URL 지정하기
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);    //요청 결과를 문자열로 반환
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); //header값 셋팅(없을시 삭제해도 무방함)
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);      //connection timeout 10초
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);   //원격 서버의 인증서가 유효한지 검사 안함
-        $response = curl_exec($ch);
-        curl_close($ch);
-        
-        return ($decode===1)?json_decode($response, true):$response;
-    }
-    
-    /**
-    * send POST request with curl
-    * @param string $url request URL
-    * @param array $headers HTTP headers
-    * @param array $data form data to submit
-    * @return array|null returns null when error
-    */
-    private static function requestPOST($url, $headers, array $data): array|null
+    private static function request(HTTPRequestMethods $method, string $url, array $headers=[], array $data=[], $decode=1): array|string|null
     {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_URL, 'https://'.$url);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); //header값 셋팅(없을시 삭제해도 무방함)
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data,JSON_UNESCAPED_UNICODE)); //POST방식으로 넘길 데이터(JSON데이터)
-        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
-        curl_setopt($ch, CURLOPT_HEADER, 1);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); 
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+
+        // POST
+        if($method->value === 1){
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_HEADER, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data,JSON_UNESCAPED_UNICODE));
+        }
+
         $response = curl_exec($ch);
         $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        $headers = substr($response, 0, $header_size);
-        $body = substr($response, $header_size);
         curl_close($ch);
-            
+
+        if($method->value === 1){
+            $headers = substr($response, 0, $header_size);
+            $body = substr($response, $header_size);
             return [json_decode($body, true), $headers];
-    }
-    
-    public static function registerUser($orgCode, $name, $region, $birthday, $password, $loginType,$checksum)
-    {
-        global $db;
-        // 자가진단 설정값 테스트
-            $f = fopen('/home/pi/phs/hcs/test.js', 'w');
-            fwrite($f, 
-            "const check = require('./check'); \n
-            check('".$orgCode."','".$name."','".$region."','".$birthday."','".$password."','".$loginType."');");
-            fclose($f);
-            exec("node /home/pi/phs/hcs/test.js", $output, $return_var);
-            if(substr($output[0], 0, 6) !== 'Bearer'){
-                return [false, $output[0]];
-            }
-        $a = $db->prepare("INSERT INTO `selfcheck`(name,orgCode,region,birthday,password,loginType,checksum) VALUES (?,?,?,?,?,?,?)");
-        $a->execute([$name,$orgCode,$region,$birthday,$password,$loginType,$checksum]);
+        }else
+            return ($decode===1)?json_decode($response, true):$response;
+        
     }
 
     /**
@@ -158,7 +132,7 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
      */
     public function getSchoolInfo(): void
     {
-        $get = self::requestGET('https://hcs.eduro.go.kr/v2/searchSchool?orgName='.urlencode($this->orgName));
+        $get = self::request(self::GET, 'hcs.eduro.go.kr/v2/searchSchool?orgName='.urlencode($this->orgName));
         
         foreach($get['schulList'] as $sc){
             if($sc['kraOrgNm'] == $this->orgName && $sc['lctnScNm'] == $this->region){
@@ -184,47 +158,31 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA81dCnCKt0NVH7j5Oh2+SGgEU0aqi5u6sYXem
     public function findUser(): void
     {
         require __DIR__.'/TransKey.php';
-        $raon = new Transkey($this->password);
-        
-        $f = fopen('call_raon.js', 'w');
-
-        fwrite($f, 
-"const p = ".json_encode($raon->sessionKey)."
-const q = '".$raon->initTime."'
-const s = ".json_encode($raon->keys)."
-const t = '".$this->password."'
-const u = '".$raon->genSessionKey."'
-const raon = require('./enc/getseed')
-raon(t,p,q,s,u).then(r => console.log(r));");
-        fclose($f);
-        exec("node call_raon.js", $output, $return_var);
-        
-        $raon->enc = $output[0];
-        $raon->finalize();
 
         $this->getSchoolInfo();
-            
+
+        $raon = new Transkey($this->password);
+        
         $data = [
             'orgCode' => $this->orgCode,
             'name' => self::RSAEncrypt($this->name),
             'birthday' => self::RSAEncrypt($this->birthday),
             'loginType' => $this->loginType,
             'stdntPNo' => null,
-            'password' => json_encode($raon->json()),
+            'password' => json_encode($raon->json),
             'lctnScCode' => $this->lctnScCode,
             'deviceUuid' => '',
             'makeSession' => true,
             'searchKey' => $this->searchKey
         ];
 
-        $res = self::requestPOST($this->baseUrl.'/v3/findUser', $this->headers, $data);
+        $res = self::request(self::POST, $this->baseUrl.'/v3/findUser', self::$headers, $data);
         $this->stdntYn = $res[0]['stdntYn'];
         $this->token = $res[0]['token'];
         $this->pInfAgrmYn = $res[0]['pInfAgrmYn'];
         $this->WAF = substr($res[1], strpos($res[1], 'WAF='), 37);
         $this->_JSESSIONID = substr($res[1], strpos($res[1], '_JSESSIONID='), 121);
-        
-        $this->debug = $res[0];
+    
         //if($res[0]['isError'])
         //    throw new ErrorException($res[0]['statusCode'].'/'.$res[0]['errorCode'].':'.$res[0]['message']);
     }
@@ -234,17 +192,17 @@ raon(t,p,q,s,u).then(r => console.log(r));");
     */
     public function selectUserGroup(): void
     {
-        $this->headers[4] = 'Authorization: '.$this->token;
-        $this->headers[5] = 'Cookie: '.$this->WAF.$this->_JSESSIONID;
+        self::$headers[4] = 'Authorization: '.$this->token;
+        self::$headers[5] = 'Cookie: '.$this->WAF.$this->_JSESSIONID;
         
         $data = [];
         
-        $res = self::requestPOST($this->baseUrl.'/v2/selectUserGroup', $this->headers, $data)[0];
+        $res = self::request(self::POST, $this->baseUrl.'/v2/selectUserGroup', self::$headers, $data)[0];
         
         $this->token = $res[0]['token'];
         $this->userPNo = $res[0]['userPNo'];
         
-        $this->headers[4] = 'Authorization: '.$this->token;
+        self::$headers[4] = 'Authorization: '.$this->token;
     }
     
     /**
@@ -257,7 +215,7 @@ raon(t,p,q,s,u).then(r => console.log(r));");
             'userPNo' => $this->userPNo
         ];
         
-        $res = self::requestPOST($this->baseUrl.'/v2/getUserInfo', $this->headers, $data);
+        $res = self::request(self::POST, $this->baseUrl.'/v2/getUserInfo', self::$headers, $data);
     }
     
     /**
@@ -306,7 +264,7 @@ raon(t,p,q,s,u).then(r => console.log(r));");
             'clientVersion' => self::getClientVersion()
         ];
         
-        return self::requestPOST($this->baseUrl.'/registerServey', $this->headers, $data);
+        return self::request(self::POST, $this->baseUrl.'/registerServey', self::$headers, $data);
     }
     
     /*
@@ -333,7 +291,7 @@ raon(t,p,q,s,u).then(r => console.log(r));");
         
         $data = [];
         
-        return self::requestPOST($this->region.'hcs.eduro.go.kr/joinClassList', $this->headers, $data);
+        return self::requestPOST($this->region.'hcs.eduro.go.kr/joinClassList', self::$headers, $data);
     }
     
     public function join($token, $orgCode, $grade, $classNm, $classCode, $url)
@@ -345,11 +303,11 @@ raon(t,p,q,s,u).then(r => console.log(r));");
             'classCode' => $this->classCode
         ];
         
-        return self::requestPOST($this->region.'hcs.eduro.go.kr/join', $this->headers, $data);
+        return self::requestPOST($this->region.'hcs.eduro.go.kr/join', self::$headers, $data);
     }
     
     public function joinDetail($data)
     {
-        return self::requestPOST($this->region.'hcs.eduro.go.kr/joinDetail', $this->headers, $data);
+        return self::requestPOST($this->region.'hcs.eduro.go.kr/joinDetail', self::$headers, $data);
     }*/
 }
