@@ -13,7 +13,7 @@ class TransKey
         'number' => ['1','2','3','4','5','6','7','8','9','0']
     ];
     
-    public $enc, $hmac, $keyIndex, $encSessionKey, $initTime, $stdntYn, $transkeyUuid, $allocationIndex, $token, $genSessionKey, $sessionKey, 
+    public $enc, $hmac, $keyIndex, $encSessionKey, $initTime, $transkeyUuid, $allocationIndex, $token, $genSessionKey, $sessionKey, 
         $dummy, $keyData, $qwerty, $number, $keys, $lower, $upper, $special;
 
     public static array $keyboardTypes = [
